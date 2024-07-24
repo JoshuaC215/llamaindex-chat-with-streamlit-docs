@@ -1,23 +1,41 @@
+import numpy as np
 import streamlit as st
-import openai
 from llama_index.llms.openai import OpenAI
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
+from trulens_eval import TruLlama
+from trulens_eval import streamlit as trulens_st
+import tru_st
+from trulens_eval.feedback.provider import OpenAI as tru_OpenAI
+from trulens_eval import Feedback
 
-st.set_page_config(page_title="Chat with the Streamlit docs, powered by LlamaIndex", page_icon="🦙", layout="centered", initial_sidebar_state="auto", menu_items=None)
-openai.api_key = st.secrets.openai_key
+
+st.set_page_config(page_title="Chat with the Streamlit docs, powered by LlamaIndex", page_icon="🦙", menu_items=None)
 st.title("Chat with the Streamlit docs, powered by LlamaIndex 💬🦙")
-st.info("Check out the full tutorial to build this app in our [blog post](https://blog.streamlit.io/build-a-chatbot-with-custom-data-sources-powered-by-llamaindex/)", icon="📃")
 
-if "messages" not in st.session_state.keys():  # Initialize the chat messages history
+# Hide running man due to feedback reruns
+st.html(
+    """
+    <style>
+    [data-testid="stStatusWidget"] {
+            visibility: hidden;
+            height: 0%;
+            position: fixed;
+        }
+    </style>
+    """,
+)
+
+if "messages" not in st.session_state:  # Initialize the chat messages history
     st.session_state.messages = [
         {
             "role": "assistant",
             "content": "Ask me a question about Streamlit's open-source Python library!",
         }
     ]
+messages = st.session_state.messages
 
-@st.cache_resource(show_spinner=False)
-def load_data():
+@st.cache_resource(show_spinner="Setting up assistant")
+def build_engine():
     reader = SimpleDirectoryReader(input_dir="./data", recursive=True)
     docs = reader.load_data()
     Settings.llm = OpenAI(
@@ -32,30 +50,68 @@ def load_data():
         facts – do not hallucinate features.""",
     )
     index = VectorStoreIndex.from_documents(docs)
-    return index
+    return index.as_query_engine()
 
+chat_engine = build_engine()
 
-index = load_data()
+@st.cache_resource(show_spinner="Configuring eval")
+def build_recorder():
+    # Initialize provider class
+    provider = tru_OpenAI()
 
-if "chat_engine" not in st.session_state.keys():  # Initialize the chat engine
-    st.session_state.chat_engine = index.as_chat_engine(
-        chat_mode="condense_question", verbose=True, streaming=True
+    # select context to be used in feedback. the location of context is app specific.
+    from trulens_eval.app import App
+    context = App.select_context(chat_engine)
+
+    # Define a groundedness feedback function
+    f_groundedness = (
+        Feedback(provider.groundedness_measure_with_cot_reasons, name = "Groundedness")
+        .on(context.collect()) # collect context chunks into a list
+        .on_output()
     )
 
-if prompt := st.chat_input(
-    "Ask a question"
-):  # Prompt for user input and save to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    # Question/answer relevance between overall question and answer.
+    f_answer_relevance = (
+        Feedback(provider.relevance_with_cot_reasons, name = "Answer Relevance")
+        .on_input_output()
+    )
+    # Question/statement relevance between question and each context chunk.
+    f_context_relevance = (
+        Feedback(provider.context_relevance_with_cot_reasons, name = "Context Relevance")
+        .on_input()
+        .on(context)
+        .aggregate(np.mean)
+    )
+    # Create the final recorder
+    return TruLlama(chat_engine,
+            app_id='LlamaIndex_App1',
+            feedbacks=[f_groundedness, f_answer_relevance, f_context_relevance]
+        )
+
+tru_recorder = build_recorder()
+
+def draw_eval(record):
+    with st.expander("View eval and trace"):
+        tru_st.trulens_feedback(record=record, key_suffix=record.main_input)
+        trulens_st.trulens_trace(record=record)
 
 for message in st.session_state.messages:  # Write message history to UI
     with st.chat_message(message["role"]):
         st.write(message["content"])
+        if "record" in message:
+            draw_eval(message["record"])
 
-# If last message is not from assistant, generate a new response
-if st.session_state.messages[-1]["role"] != "assistant":
+
+if prompt := st.chat_input("Ask a question"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").write(prompt)
+
     with st.chat_message("assistant"):
-        response_stream = st.session_state.chat_engine.stream_chat(prompt)
-        st.write_stream(response_stream.response_gen)
-        message = {"role": "assistant", "content": response_stream.response}
-        # Add response to message history
+        with st.spinner("Thinking..."):
+            with tru_recorder as recording:
+                response = chat_engine.query(prompt)
+                st.write(response.response)
+                record = recording.get()
+        draw_eval(record)
+        message = {"role": "assistant", "content": response.response, "record": record}
         st.session_state.messages.append(message)

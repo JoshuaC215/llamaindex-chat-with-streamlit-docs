@@ -4,3 +4,4 @@ llama-index
 llama-index-llms-openai
 nltk
 pypdf
+trulens-eval

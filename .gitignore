@@ -1,2 +1,3 @@
-secrets.toml
 .streamlit/secrets.toml
+__pycache__/
+default.sqlite
