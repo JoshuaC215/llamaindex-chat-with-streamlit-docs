@@ -18,7 +18,7 @@ class FeedbackDisplay(BaseModel):
     icon: str
 
 
-@st.experimental_fragment(run_every=2)
+@st.fragment(run_every=2)
 def trulens_feedback(record: Record, key_suffix=""):
     """
     Render clickable feedback pills for a given record.

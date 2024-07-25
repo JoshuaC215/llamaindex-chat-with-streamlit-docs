@@ -4,13 +4,15 @@ from llama_index.llms.openai import OpenAI
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
 from llama_index.core.chat_engine import CondenseQuestionChatEngine
 from trulens_eval import TruLlama
-from trulens_eval import streamlit as trulens_st
-import tru_st
+
 from trulens_eval.feedback.provider import OpenAI as tru_OpenAI
 from trulens_eval import Feedback
 
 
 st.set_page_config(page_title="Chat with the Streamlit docs, powered by LlamaIndex", page_icon="🦙", menu_items=None)
+from trulens_eval import streamlit as trulens_st
+import tru_st
+
 st.title("Chat with the Streamlit docs, powered by LlamaIndex 💬🦙")
 
 # Hide running man due to feedback reruns
@@ -117,9 +119,8 @@ if prompt := st.chat_input("Ask a question"):
     st.chat_message("user").write(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            with tru_recorder as recording:
-                response = chat_engine.chat(prompt)
+        with tru_recorder as recording:
+            response = chat_engine.chat(prompt)
         record = recording.records[-1]
         message = {
                 "role": "assistant",
