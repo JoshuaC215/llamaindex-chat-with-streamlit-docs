@@ -9,11 +9,15 @@ from trulens_eval.feedback.provider import OpenAI as tru_OpenAI
 from trulens_eval import Feedback
 
 
-st.set_page_config(page_title="Chat with the Streamlit docs, powered by LlamaIndex", page_icon="🦙", menu_items=None)
+st.set_page_config(
+        page_title="Chat with the Streamlit docs",
+        page_icon="🦙",
+        menu_items=None,
+    )
 from trulens_eval import streamlit as trulens_st
 import tru_st
 
-st.title("Chat with the Streamlit docs, powered by LlamaIndex 💬🦙")
+st.title("🦙 Chat with the Streamlit docs")
 
 # Hide running man due to feedback reruns
 st.html(
